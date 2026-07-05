@@ -24,6 +24,8 @@ export function Table() {
   const start = useGame((s) => s.start);
   const nextHand = useGame((s) => s.nextHand);
   const endGame = useGame((s) => s.endGame);
+  const spectating = useGame((s) => s.spectating);
+  const sitDown = useGame((s) => s.sitDown);
 
   // Init PixiJS once.
   useEffect(() => {
@@ -62,6 +64,11 @@ export function Table() {
   const me = state?.players.find((p) => p.id === playerId);
   const isHost = state?.hostId === playerId;
   const canStart = (state?.players.length ?? 0) >= 2;
+  const canSit =
+    !!state &&
+    state.players.length < 6 &&
+    (state.mode === "cash" || state.phase === "lobby") &&
+    state.phase !== "ended";
   const inLobby = state?.phase === "lobby";
   const handOver = state?.phase === "hand_over";
   const isTournament = state?.mode === "tournament";
@@ -159,9 +166,16 @@ export function Table() {
             </div>
             <p className="mb-1 text-sm text-white/50">Share this code to invite players</p>
             <p className="mb-4 font-mono text-4xl font-black tracking-[0.3em] text-emerald-300">{code}</p>
-            <p className="mb-4 text-white/70">
+            <p className="mb-1 text-white/70">
               {state?.players.length ?? 0} player{(state?.players.length ?? 0) === 1 ? "" : "s"} seated
             </p>
+            {state && !isTournament && (
+              <p className="mb-4 font-mono text-sm text-white/50">
+                Blinds {state.smallBlind}/{state.bigBlind}
+                {state.ante > 0 ? ` · ante ${state.ante}` : ""}
+              </p>
+            )}
+            {isTournament && <div className="mb-4" />}
             {isHost ? (
               <button
                 onClick={start}
@@ -227,11 +241,30 @@ export function Table() {
         </div>
       )}
 
-      {/* Cash rebuy / sit-out + host approvals */}
-      <CashControls />
+      {/* Cash rebuy / sit-out + host approvals (players only) */}
+      {!spectating && <CashControls />}
 
       {/* Action bar (only on your turn) */}
-      {me && !me.hasFolded && !me.isOut && !me.sittingOut && me.stack > 0 && <ActionBar />}
+      {!spectating && me && !me.hasFolded && !me.isOut && !me.sittingOut && me.stack > 0 && (
+        <ActionBar />
+      )}
+
+      {/* Spectator bar */}
+      {spectating && (
+        <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 mx-auto flex w-full max-w-md items-center justify-center gap-3 p-3">
+          <span className="rounded-full border border-white/10 bg-black/60 px-3 py-2 text-sm font-semibold text-white/80 backdrop-blur">
+            👁 Spectating
+          </span>
+          {canSit && (
+            <button
+              onClick={() => sitDown(localStorage.getItem("poker.name") || "Guest")}
+              className="rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 px-5 py-2.5 text-sm font-extrabold text-emerald-950 shadow-lg"
+            >
+              Take a seat
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

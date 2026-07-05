@@ -45,8 +45,11 @@ interface GameStore {
   hole: [Card, Card] | null;
   legal: LegalActions | null;
   error: string | null;
+  spectating: boolean;
 
   join(code: string, name: string, config?: GameConfigMsg): void;
+  spectate(code: string, name?: string): void;
+  sitDown(name: string): void;
   leave(): void;
   start(): void;
   nextHand(): void;
@@ -57,6 +60,58 @@ interface GameStore {
   sitOut(): void;
   sitIn(): void;
   clearError(): void;
+}
+
+type SetFn = (partial: Partial<GameStore>) => void;
+type GetFn = () => GameStore;
+
+/** Open a socket to a table and wire the shared message handlers. */
+function connect(set: SetFn, get: GetFn, room: string, onOpen: (s: PartySocket) => void): PartySocket {
+  const socket = new PartySocket({
+    host: PARTY_HOST,
+    party: "poker-room", // matches the "PokerRoom" Durable Object binding
+    room,
+    id: get().playerId,
+  });
+  socket.addEventListener("open", () => {
+    set({ connected: true });
+    onOpen(socket);
+  });
+  socket.addEventListener("close", () => set({ connected: false }));
+  socket.addEventListener("message", (ev) => {
+    let msg: ServerMessage;
+    try {
+      msg = JSON.parse(ev.data as string) as ServerMessage;
+    } catch {
+      return;
+    }
+    switch (msg.t) {
+      case "welcome":
+        set({ playerId: msg.playerId, state: msg.state });
+        break;
+      case "state":
+        if (msg.state.phase === "ended") localStorage.removeItem("poker.room");
+        set({ state: msg.state });
+        break;
+      case "hole":
+        set({ hole: msg.cards });
+        break;
+      case "legal":
+        if (msg.actions && !get().legal) playSound("turn"); // your turn
+        set({ legal: msg.actions });
+        break;
+      case "event": {
+        for (const cb of eventSubs) cb(msg.event);
+        const s = soundForEvent(msg.event);
+        if (s) playSound(s);
+        break;
+      }
+      case "error":
+        set({ error: msg.message });
+        break;
+    }
+  });
+  return socket;
 }
 
 export const useGame = create<GameStore>((set, get) => ({
@@ -70,69 +125,54 @@ export const useGame = create<GameStore>((set, get) => ({
   hole: null,
   legal: null,
   error: null,
+  spectating: false,
 
   join(code, name, config) {
     get().socket?.close();
     const room = code.toUpperCase();
-    const socket = new PartySocket({
-      host: PARTY_HOST,
-      party: "poker-room", // matches the "PokerRoom" Durable Object binding
-      room,
-      id: get().playerId,
+    const socket = connect(set, get, room, (s) => {
+      s.send(JSON.stringify({ t: "join", name }));
+      // Host declares config right after joining (server ignores it from
+      // non-hosts and once the game has started).
+      if (config) s.send(JSON.stringify({ t: "config", ...config }));
     });
-
-    socket.addEventListener("open", () => {
-      set({ connected: true });
-      socket.send(JSON.stringify({ t: "join", name }));
-      // Host declares the game config right after joining (server ignores it
-      // from non-hosts and once the game has started).
-      if (config) socket.send(JSON.stringify({ t: "config", ...config }));
-    });
-    socket.addEventListener("close", () => set({ connected: false }));
-    socket.addEventListener("message", (ev) => {
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(ev.data as string) as ServerMessage;
-      } catch {
-        return;
-      }
-      switch (msg.t) {
-        case "welcome":
-          set({ playerId: msg.playerId, state: msg.state });
-          break;
-        case "state":
-          // Once a game is over, stop auto-rejoining it on next load.
-          if (msg.state.phase === "ended") localStorage.removeItem("poker.room");
-          set({ state: msg.state });
-          break;
-        case "hole":
-          set({ hole: msg.cards });
-          break;
-        case "legal":
-          if (msg.actions && !get().legal) playSound("turn"); // your turn
-          set({ legal: msg.actions });
-          break;
-        case "event": {
-          for (const cb of eventSubs) cb(msg.event);
-          const s = soundForEvent(msg.event);
-          if (s) playSound(s);
-          break;
-        }
-        case "error":
-          set({ error: msg.message });
-          break;
-      }
-    });
-
-    // Remember the table so a tab-close/refresh can auto-rejoin.
     localStorage.setItem("poker.room", room);
     localStorage.setItem("poker.name", name);
-    set({ socket, code: room, name, screen: "table", hole: null, legal: null });
+    localStorage.removeItem("poker.spectate");
+    set({ socket, code: room, name, spectating: false, screen: "table", hole: null, legal: null });
+  },
+
+  spectate(code, name) {
+    get().socket?.close();
+    const room = code.toUpperCase();
+    const socket = connect(set, get, room, () => {}); // watch only — never sends "join"
+    localStorage.setItem("poker.room", room);
+    localStorage.setItem("poker.spectate", "1");
+    if (name) localStorage.setItem("poker.name", name);
+    set({
+      socket,
+      code: room,
+      name: name ?? get().name,
+      spectating: true,
+      screen: "table",
+      hole: null,
+      legal: null,
+    });
+  },
+
+  sitDown(name) {
+    const s = get().socket;
+    if (!s) return;
+    localStorage.setItem("poker.name", name);
+    localStorage.removeItem("poker.spectate");
+    s.send(JSON.stringify({ t: "join", name }));
+    set({ spectating: false, name });
   },
 
   leave() {
     get().socket?.close();
     localStorage.removeItem("poker.room");
+    localStorage.removeItem("poker.spectate");
     set({
       socket: null,
       connected: false,
@@ -140,6 +180,7 @@ export const useGame = create<GameStore>((set, get) => ({
       state: null,
       hole: null,
       legal: null,
+      spectating: false,
       screen: "home",
     });
   },

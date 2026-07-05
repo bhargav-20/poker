@@ -77,6 +77,8 @@ export class PokerRoom extends Server<Env> {
           antePctOfBB: msg.antePctOfBB,
           payout: msg.payout,
           turnSeconds: msg.turnSeconds,
+          smallBlind: msg.smallBlind,
+          bigBlind: msg.bigBlind,
         });
         this.broadcastState();
         break;

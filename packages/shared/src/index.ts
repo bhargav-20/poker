@@ -186,6 +186,9 @@ export interface GameConfigMsg {
   levelSeconds?: number;
   /** Per-turn action clock in seconds (0 = off). */
   turnSeconds?: number;
+  /** Cash blinds (tournaments use the escalating schedule). */
+  smallBlind?: number;
+  bigBlind?: number;
   /** Starting chip stack (both modes). */
   startingStack?: number;
   /** Cash rebuy range (chips). */

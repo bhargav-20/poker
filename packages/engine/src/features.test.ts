@@ -103,6 +103,30 @@ describe("cash rebuy + sit-out", () => {
   });
 });
 
+describe("custom blinds (cash)", () => {
+  it("applies configured small/big blinds in a cash game", () => {
+    const { g } = game({ mode: "cash" }, 3);
+    g.configure({ mode: "cash", smallBlind: 25, bigBlind: 50 });
+    g.startHand();
+    const s = g.toPublic();
+    expect(s.smallBlind).toBe(25);
+    expect(s.bigBlind).toBe(50);
+    expect(s.totalPot).toBe(75); // sb 25 + bb 50
+  });
+
+  it("keeps big blind above small blind", () => {
+    const { g } = game({ mode: "cash" }, 2);
+    g.configure({ mode: "cash", smallBlind: 40, bigBlind: 10 });
+    expect(g.toPublic().bigBlind).toBeGreaterThan(g.toPublic().smallBlind);
+  });
+
+  it("tournaments ignore custom blinds (schedule wins)", () => {
+    const { g } = game({ mode: "tournament" }, 3);
+    g.configure({ mode: "tournament", smallBlind: 25, bigBlind: 50 });
+    expect(g.toPublic().blinds.current).toEqual({ sb: 5, bb: 10, ante: 0 });
+  });
+});
+
 describe("host end game", () => {
   function playCallDown(g: PokerGame) {
     let guard = 0;

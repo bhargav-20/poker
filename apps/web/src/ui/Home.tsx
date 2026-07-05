@@ -6,25 +6,37 @@ import { makeCode, useGame } from "../store";
 const ANTE_OPTIONS = [0, 10, 25, 50, 100];
 const TURN_OPTIONS = [0, 15, 30, 45, 60];
 
+type Mode = "host" | "join" | "watch";
+
 export function Home() {
   const join = useGame((s) => s.join);
+  const spectate = useGame((s) => s.spectate);
   const initialCode = useGame((s) => s.code) ?? "";
   const [name, setName] = useState(localStorage.getItem("poker.name") ?? "");
   const [code, setCode] = useState(initialCode);
-  const [mode, setMode] = useState<"host" | "join">(initialCode ? "join" : "host");
+  const [mode, setMode] = useState<Mode>(initialCode ? "join" : "host");
   const [gameMode, setGameMode] = useState<GameMode>("cash");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [startingStack, setStartingStack] = useState(1000);
+  const [smallBlind, setSmallBlind] = useState(5);
+  const [bigBlind, setBigBlind] = useState(10);
   const [antePctOfBB, setAntePctOfBB] = useState(0);
   const [turnSeconds, setTurnSeconds] = useState(30);
   const [buyIn, setBuyIn] = useState(100);
   const [payoutId, setPayoutId] = useState("wta");
 
-  const canGo = name.trim().length > 0 && (mode === "host" || code.trim().length >= 4);
+  const needsCode = mode !== "host";
+  const needsName = mode !== "watch";
+  const canGo =
+    (!needsName || name.trim().length > 0) && (!needsCode || code.trim().length >= 4);
 
   function go() {
     if (!canGo) return;
-    localStorage.setItem("poker.name", name.trim());
+    if (name.trim()) localStorage.setItem("poker.name", name.trim());
+    if (mode === "watch") {
+      spectate(code.trim().toUpperCase(), name.trim() || undefined);
+      return;
+    }
     const room = mode === "host" ? makeCode() : code.trim().toUpperCase();
     const config =
       mode === "host"
@@ -38,7 +50,7 @@ export function Home() {
                   buyIn,
                   payout: PAYOUT_PRESETS.find((p) => p.id === payoutId)?.pct ?? [100],
                 }
-              : {}),
+              : { smallBlind, bigBlind }),
           }
         : undefined;
     join(room, name.trim(), config);
@@ -64,18 +76,18 @@ export function Home() {
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl">
           {/* Mode toggle */}
-          <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-black/30 p-1">
-            {(["host", "join"] as const).map((m) => (
+          <div className="mb-5 grid grid-cols-3 gap-1 rounded-xl bg-black/30 p-1">
+            {(["host", "join", "watch"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`rounded-lg py-2 text-sm font-semibold transition ${
+                className={`rounded-lg py-2 text-sm font-semibold capitalize transition ${
                   mode === m
                     ? "bg-emerald-500 text-emerald-950 shadow"
                     : "text-emerald-100/70 hover:text-white"
                 }`}
               >
-                {m === "host" ? "Host a game" : "Join a game"}
+                {m}
               </button>
             ))}
           </div>
@@ -134,6 +146,31 @@ export function Home() {
                       className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
                     />
                   </label>
+
+                  {gameMode === "cash" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] text-white/50">Small blind</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={smallBlind}
+                          onChange={(e) => setSmallBlind(Math.max(1, Number(e.target.value)))}
+                          className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] text-white/50">Big blind</span>
+                        <input
+                          type="number"
+                          min={2}
+                          value={bigBlind}
+                          onChange={(e) => setBigBlind(Math.max(2, Number(e.target.value)))}
+                          className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
+                        />
+                      </label>
+                    </div>
+                  )}
 
                   <div>
                     <span className="mb-1 block text-[11px] text-white/50">
@@ -216,7 +253,7 @@ export function Home() {
           )}
 
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-emerald-200/60">
-            Your name
+            Your name{mode === "watch" && <span className="text-white/30"> (optional)</span>}
           </label>
           <input
             value={name}
@@ -226,7 +263,7 @@ export function Home() {
             className="mb-4 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-emerald-400/60"
           />
 
-          {mode === "join" && (
+          {needsCode && (
             <>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-emerald-200/60">
                 Table code
@@ -247,7 +284,7 @@ export function Home() {
             disabled={!canGo}
             className="w-full rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 py-3.5 font-bold text-emerald-950 shadow-lg transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {mode === "host" ? "Create table" : "Join table"}
+            {mode === "host" ? "Create table" : mode === "watch" ? "Watch table" : "Join table"}
           </button>
         </div>
 

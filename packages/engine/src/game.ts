@@ -145,6 +145,8 @@ export class PokerGame {
     antePctOfBB?: number;
     payout?: PayoutStructure;
     turnSeconds?: number;
+    smallBlind?: number;
+    bigBlind?: number;
   }): void {
     if (this.phase !== "lobby") return;
     if (opts.mode) {
@@ -171,6 +173,13 @@ export class PokerGame {
     if (opts.antePctOfBB !== undefined) this.antePctOfBB = Math.max(0, opts.antePctOfBB);
     if (opts.payout && opts.payout.length > 0) this.payout = opts.payout;
     if (opts.turnSeconds !== undefined) this.turnSeconds = Math.max(0, opts.turnSeconds);
+    // Custom blinds apply to cash games; tournaments use the escalating schedule.
+    if (this.mode !== "tournament") {
+      if (opts.smallBlind !== undefined) this.smallBlind = Math.max(1, Math.round(opts.smallBlind));
+      if (opts.bigBlind !== undefined) {
+        this.bigBlind = Math.max(this.smallBlind + 1, Math.round(opts.bigBlind));
+      }
+    }
   }
 
   /** Escalate to the next blind level (tournament). Applies to the next hand. */

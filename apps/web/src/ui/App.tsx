@@ -13,6 +13,11 @@ export function App() {
   useEffect(() => {
     const savedRoom = localStorage.getItem("poker.room");
     const savedName = localStorage.getItem("poker.name");
+    const wasSpectating = localStorage.getItem("poker.spectate") === "1";
+    if (savedRoom && wasSpectating) {
+      useGame.getState().spectate(savedRoom, savedName ?? undefined);
+      return;
+    }
     if (savedRoom && savedName) {
       useGame.getState().join(savedRoom, savedName);
       return;
