@@ -1,0 +1,13 @@
+name = "poker"
+main = "src/server.ts"
+compatibility_date = "2024-11-01"
+
+# One Durable Object per table. SQLite-backed classes are required on the
+# Cloudflare Workers free plan.
+[[durable_objects.bindings]]
+name = "PokerRoom"
+class_name = "PokerRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PokerRoom"]

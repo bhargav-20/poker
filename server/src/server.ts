@@ -1,4 +1,4 @@
-import type * as Party from "partykit/server";
+import { Server, type Connection, routePartykitRequest } from "partyserver";
 import { PokerGame } from "@poker/engine";
 import {
   DEFAULTS,
@@ -7,28 +7,30 @@ import {
   type ServerMessage,
 } from "@poker/shared";
 
+interface Env {
+  PokerRoom: DurableObjectNamespace<PokerRoom>;
+}
+
 /**
- * One PartyKit room (= one Cloudflare Durable Object) per poker table.
- * `room.id` is the table code. The PokerGame is the single source of truth;
- * hidden hole cards are only sent to their owner.
- *
- * Tournament mode adds three server-driven timers: a blind-escalation clock,
- * auto-advancing hands, and a per-turn timer that auto-folds/checks so play
- * never stalls on a slow or disconnected player.
+ * One Durable Object per poker table (its name = the table code). The PokerGame
+ * is the single source of truth; hidden hole cards are only sent to their owner.
+ * Hibernation is disabled so the in-memory game survives between messages.
  */
-export default class PokerRoom implements Party.Server {
-  game: PokerGame;
+export class PokerRoom extends Server<Env> {
+  static options = { hibernate: false };
+
+  game!: PokerGame;
   private levelSeconds: number = DEFAULTS.LEVEL_SECONDS;
   private blindTimer: ReturnType<typeof setTimeout> | null = null;
   private handTimer: ReturnType<typeof setTimeout> | null = null;
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
   private blindClockStarted = false;
 
-  constructor(readonly room: Party.Room) {
-    this.game = new PokerGame({ code: room.id });
+  onStart() {
+    this.game = new PokerGame({ code: this.name });
   }
 
-  onConnect(conn: Party.Connection) {
+  onConnect(conn: Connection) {
     if (this.game.hasPlayer(conn.id)) {
       this.game.setConnected(conn.id, true);
       this.broadcastState();
@@ -37,17 +39,18 @@ export default class PokerRoom implements Party.Server {
     if (this.game.hasPlayer(conn.id)) this.syncPlayer(conn.id);
   }
 
-  onClose(conn: Party.Connection) {
+  onClose(conn: Connection) {
     if (this.game.hasPlayer(conn.id)) {
       this.game.setConnected(conn.id, false);
       this.broadcastState();
     }
   }
 
-  onMessage(raw: string, sender: Party.Connection) {
+  onMessage(sender: Connection, message: string | ArrayBuffer) {
+    if (typeof message !== "string") return;
     let msg: ClientMessage;
     try {
-      msg = JSON.parse(raw) as ClientMessage;
+      msg = JSON.parse(message) as ClientMessage;
     } catch {
       return;
     }
@@ -78,10 +81,23 @@ export default class PokerRoom implements Party.Server {
         this.broadcastState();
         break;
       }
-      case "endGame": {
-        const r = this.game.endGame(sender.id);
-        if (!r.ok) return this.send(sender, { t: "error", message: r.error! });
-        this.dispatch([]);
+      case "start":
+      case "nextHand": {
+        const { events, error } = this.game.startHand(sender.id);
+        if (error) return this.send(sender, { t: "error", message: error });
+        if (this.game.mode === "tournament" && !this.blindClockStarted) {
+          this.startBlindClock();
+        }
+        this.dispatch(events);
+        break;
+      }
+      case "action": {
+        const { events, error } = this.game.act(sender.id, {
+          type: msg.action,
+          amount: msg.amount,
+        });
+        if (error) return this.send(sender, { t: "error", message: error });
+        this.dispatch(events);
         break;
       }
       case "requestRebuy": {
@@ -103,30 +119,16 @@ export default class PokerRoom implements Party.Server {
         this.broadcastState();
         break;
       }
-      case "start":
-      case "nextHand": {
-        const { events, error } = this.game.startHand(sender.id);
-        if (error) return this.send(sender, { t: "error", message: error });
-        if (this.game.mode === "tournament" && !this.blindClockStarted) {
-          this.startBlindClock();
-        }
-        this.dispatch(events);
-        break;
-      }
-      case "action": {
-        const { events, error } = this.game.act(sender.id, {
-          type: msg.action,
-          amount: msg.amount,
-        });
-        if (error) return this.send(sender, { t: "error", message: error });
-        this.dispatch(events);
+      case "endGame": {
+        const r = this.game.endGame(sender.id);
+        if (!r.ok) return this.send(sender, { t: "error", message: r.error! });
+        this.dispatch([]);
         break;
       }
     }
   }
 
   // ── Timers ─────────────────────────────────────────────────────────────────
-
   private startBlindClock() {
     this.blindClockStarted = true;
     this.game.nextBlindAt = Date.now() + this.levelSeconds * 1000;
@@ -145,16 +147,13 @@ export default class PokerRoom implements Party.Server {
     this.dispatch(ev ? [ev] : []);
   }
 
-  /** Auto-resolve the active player's turn (check if free, else fold). */
   private autoAct() {
     const st = this.game.toPublic();
     if (st.phase !== "in_hand" || st.activeSeat === null) return;
     const active = st.players.find((p) => p.seat === st.activeSeat);
     if (!active) return;
     const legal = this.game.legalActions(active.id);
-    const { events } = this.game.act(active.id, {
-      type: legal?.canCheck ? "check" : "fold",
-    });
+    const { events } = this.game.act(active.id, { type: legal?.canCheck ? "check" : "fold" });
     this.dispatch(events);
   }
 
@@ -163,7 +162,6 @@ export default class PokerRoom implements Party.Server {
     if (!error) this.dispatch(events);
   }
 
-  /** (Re)arm per-turn and inter-hand timers based on current game state. */
   private arm() {
     if (this.turnTimer) clearTimeout(this.turnTimer);
     if (this.handTimer) clearTimeout(this.handTimer);
@@ -179,7 +177,6 @@ export default class PokerRoom implements Party.Server {
       return;
     }
 
-    // Turn clock (both modes when configured). Auto folds/checks on timeout.
     if (g.turnSeconds > 0 && g.phase === "in_hand" && g.activeSeat !== null) {
       g.turnEndsAt = Date.now() + g.turnSeconds * 1000;
       this.turnTimer = setTimeout(() => this.autoAct(), g.turnSeconds * 1000);
@@ -187,47 +184,52 @@ export default class PokerRoom implements Party.Server {
       g.turnEndsAt = null;
     }
 
-    // Auto-advance to the next hand in a running tournament.
     if (g.mode === "tournament" && g.phase === "hand_over") {
-      this.handTimer = setTimeout(
-        () => this.autoNextHand(),
-        DEFAULTS.HAND_DELAY_SECONDS * 1000,
-      );
+      this.handTimer = setTimeout(() => this.autoNextHand(), DEFAULTS.HAND_DELAY_SECONDS * 1000);
     }
   }
 
   // ── Broadcast helpers ──────────────────────────────────────────────────────
-
   private dispatch(events: GameEvent[]) {
-    for (const event of events) this.broadcast({ t: "event", event });
+    for (const event of events) this.emit({ t: "event", event });
     this.arm();
     this.broadcastState();
     this.syncAll();
   }
 
   private broadcastState() {
-    this.broadcast({ t: "state", state: this.game.toPublic() });
+    this.emit({ t: "state", state: this.game.toPublic() });
   }
 
   private syncAll() {
-    for (const conn of this.room.getConnections()) {
+    for (const conn of this.getConnections()) {
       if (this.game.hasPlayer(conn.id)) this.syncPlayer(conn.id);
     }
   }
 
   private syncPlayer(id: string) {
-    const conn = this.room.getConnection(id);
+    const conn = this.getConnection(id);
     if (!conn) return;
     const hole = this.game.getHole(id);
     if (hole) this.send(conn, { t: "hole", cards: hole });
     this.send(conn, { t: "legal", actions: this.game.legalActions(id) });
   }
 
-  private broadcast(msg: ServerMessage) {
-    this.room.broadcast(JSON.stringify(msg));
+  private emit(msg: ServerMessage) {
+    this.broadcast(JSON.stringify(msg));
   }
 
-  private send(conn: Party.Connection, msg: ServerMessage) {
+  private send(conn: Connection, msg: ServerMessage) {
     conn.send(JSON.stringify(msg));
   }
 }
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const routed = await routePartykitRequest(
+      request,
+      env as unknown as Record<string, unknown>,
+    );
+    return routed ?? new Response("Not found", { status: 404 });
+  },
+} satisfies ExportedHandler<Env>;

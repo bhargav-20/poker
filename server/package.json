@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "partykit dev",
-    "deploy": "partykit deploy",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@poker/engine": "workspace:*",
-    "@poker/shared": "workspace:*"
+    "@poker/shared": "workspace:*",
+    "partyserver": "^0.0.71"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
-    "partykit": "^0.0.114"
+    "wrangler": "^3.99.0"
   }
 }

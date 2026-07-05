@@ -17,7 +17,7 @@ Richer image-based themes are the next phase (see `Roadmap`).
 |-------|------|
 | Game engine | Pure TypeScript, unit-tested (`packages/engine`) — deck, betting state machine, side pots, hand eval via [pokersolver](https://github.com/goldfire/pokersolver) |
 | Shared types | `packages/shared` — the wire protocol + DTOs |
-| Server | [PartyKit](https://partykit.io) (`server`) — one room = one Cloudflare Durable Object = one table |
+| Server | Cloudflare Workers + Durable Objects via [partyserver](https://github.com/threepointone/partyserver) (`server`) — one Durable Object = one table |
 | Client | React + Vite + [PixiJS v8](https://pixijs.com) (WebGPU) + [GSAP](https://gsap.com) + Zustand (`apps/web`) |
 
 **Why it can't be cheated:** all state lives in the engine on the server. Each
@@ -29,7 +29,7 @@ public state (board, pots, bets, whose turn).
 ```bash
 pnpm install
 
-# Terminal 1 — game server (PartyKit) on :1999
+# Terminal 1 — game server (Cloudflare Worker via wrangler) on :8787
 pnpm dev:server
 
 # Terminal 2 — web app on :5173
@@ -53,13 +53,13 @@ pnpm typecheck     # all packages
 
 ## Deploy (free, hard-capped)
 
-The server runs on Cloudflare's **free tier** — if you exceed daily limits it
-returns 429s until the next day rather than billing you; you only ever pay by
-deliberately upgrading.
+Client → **GitHub Pages**; realtime server → **Cloudflare Workers** (your account,
+free tier — exceed a daily limit and it 429s rather than billing you). Full runbook
+in [DEPLOY.md](DEPLOY.md).
 
 ```bash
-cd server && pnpm deploy      # partykit deploy → Cloudflare
-# then set VITE_PARTYKIT_HOST to your deployed host and build apps/web
+cd server && pnpm exec wrangler login && pnpm deploy   # → poker.<you>.workers.dev
+# then set the repo variable VITE_PARTYKIT_HOST to that host; pushing to main deploys the client
 ```
 
 ## Themes

@@ -76,6 +76,7 @@ export const useGame = create<GameStore>((set, get) => ({
     const room = code.toUpperCase();
     const socket = new PartySocket({
       host: PARTY_HOST,
+      party: "poker-room", // matches the "PokerRoom" Durable Object binding
       room,
       id: get().playerId,
     });
