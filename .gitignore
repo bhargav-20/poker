@@ -1,0 +1,10 @@
+node_modules
+dist
+.partykit
+.parcel-cache
+*.log
+.DS_Store
+.env
+.env.local
+.claude
+.vite

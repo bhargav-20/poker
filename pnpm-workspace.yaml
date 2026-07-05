@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+  - "server"
+  - "apps/*"
+allowBuilds:
+  esbuild: true
+  workerd: true
