@@ -14,9 +14,12 @@ client at it.
 
 ```bash
 cd server
-pnpm dlx partykit login      # one-time, opens the browser
-pnpm dlx partykit deploy     # deploys to https://poker.<your-username>.partykit.dev
+pnpm exec partykit login     # one-time, opens the browser (uses the installed partykit)
+pnpm exec partykit deploy    # deploys to https://poker.<your-username>.partykit.dev
 ```
+
+> Use `pnpm exec` (not `pnpm dlx`) — partykit is already a dependency here, so this
+> avoids re-downloading it and pnpm's "choose which packages to build" prompt.
 
 Note the resulting host (e.g. `poker.bhargav-20.partykit.dev`). It's HTTPS/WSS, which is required
 because Pages is served over HTTPS.
