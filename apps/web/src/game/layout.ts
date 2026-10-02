@@ -1,3 +1,5 @@
+import { DEFAULTS } from "@poker/shared";
+
 export interface Point {
   x: number;
   y: number;
@@ -24,27 +26,32 @@ export interface TableGeometry {
   deck: Point;
 }
 
-const MAX_SEATS = 6;
+const MAX_SEATS = DEFAULTS.MAX_SEATS;
 
-// Portrait: local player at the bottom, the other five fan across the upper band.
+// Portrait: local player at the bottom, one seat on each flank, and the other
+// five fan across the upper band.
 const SLOTS_PORTRAIT: ReadonlyArray<readonly [number, number]> = [
-  [0.5, 1.0],
-  [0.17, 0.2],
-  [0.34, 0.04],
-  [0.5, 0.02],
-  [0.66, 0.04],
-  [0.83, 0.2],
+  [0.5, 1.0], // 0 hero
+  [0.09, 0.56], // 1 left
+  [0.12, 0.25], // 2 upper-left
+  [0.27, 0.07], // 3 top-left
+  [0.5, 0.0], // 4 top
+  [0.73, 0.07], // 5 top-right
+  [0.88, 0.25], // 6 upper-right
+  [0.91, 0.56], // 7 right
 ];
 
 // Landscape: a wide ring. The hero sits bottom, left of center so the action
 // dock can live in the bottom-right corner without overlapping it.
 const SLOTS_LANDSCAPE: ReadonlyArray<readonly [number, number]> = [
   [0.4, 1.0], // 0 hero
-  [0.08, 0.56], // 1 left
-  [0.11, 0.06], // 2 upper-left
-  [0.42, 0.0], // 3 top
-  [0.9, 0.06], // 4 upper-right
-  [0.9, 0.46], // 5 right (kept above the corner dock)
+  [0.13, 0.94], // 1 lower-left
+  [0.05, 0.5], // 2 left
+  [0.14, 0.06], // 3 upper-left
+  [0.37, 0.0], // 4 top-left
+  [0.63, 0.0], // 5 top-right
+  [0.88, 0.06], // 6 upper-right
+  [0.93, 0.46], // 7 right (kept above the corner dock)
 ];
 
 function clamp(v: number, lo: number, hi: number): number {

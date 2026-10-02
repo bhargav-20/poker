@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { DEFAULTS } from "@poker/shared";
 import { useGame } from "../store";
 import { THEMES, DEFAULT_THEME } from "../themes";
 import { PokerTable } from "../game/PokerTable";
@@ -66,7 +67,7 @@ export function Table() {
   const canStart = (state?.players.length ?? 0) >= 2;
   const canSit =
     !!state &&
-    state.players.length < 6 &&
+    state.players.length < DEFAULTS.MAX_SEATS &&
     (state.mode === "cash" || state.phase === "lobby") &&
     state.phase !== "ended";
   const inLobby = state?.phase === "lobby";

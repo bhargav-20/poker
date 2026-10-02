@@ -223,7 +223,7 @@ export type ServerMessage =
   | { t: "error"; message: string };
 
 export const DEFAULTS = {
-  MAX_SEATS: 6,
+  MAX_SEATS: 8,
   STARTING_STACK: 1000,
   SMALL_BLIND: 5,
   BIG_BLIND: 10,
